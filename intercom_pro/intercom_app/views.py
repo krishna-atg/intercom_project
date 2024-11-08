@@ -2,6 +2,7 @@ import threading
 import time
 import queue
 import requests
+from requests.auth import HTTPBasicAuth
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -233,16 +234,69 @@ class HangupCallView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+def reboot(zenitel_ip):
+    url = f"http://admin:alphaadmin@{zenitel_ip}/goform/zForm_send_cmd?message=REBOOT"
+    params = {"message": "REBOOT"}
+    try:
+        response = requests.get(url, params=params, auth=('admin', 'alphaadmin'))
+        if response.status_code == 200:
+            return "Reboot command sent successfully."
+        else:
+            return f"Failed to send reboot command. Status code: {response.status_code}"
+    except requests.exceptions.RequestException as e:
+        print(f"Error: {e}")
+        return None
+
+
+# class UpdateSIPConfiguration(APIView):
+#     def post(self, request):
+#         # Extract parameters from the request body if needed
+#         ip_zenitel = request.data.get("zenitel_ip")
+#         sip_nick = request.data.get("sip_nick")
+#         sip_id = request.data.get("sip_id")
+#         sip_domain = request.data.get("sip_domain")
+#         sip_domain2 = request.data.get("sip_domain2")
+#         sip_auth_user = request.data.get("sip_auth_user")
+#         sip_auth_pwd = request.data.get("sip_auth_pwd")
+#         auto_answer_mode = request.data.get("auto_answer_mode", "on")
+#
+#         # Define API endpoint and parameters
+#         url = f"http://{ip_zenitel}/goform/zForm_save_changes"
+#         params = {
+#             "sip_nick": sip_nick,
+#             "sip_id": sip_id,
+#             "sip_domain": sip_domain,
+#             "sip_domain2": sip_domain2,
+#             "sipconfig": "SAVE",
+#             "sip_auth_user": sip_auth_user,
+#             "sip_auth_pwd": sip_auth_pwd,
+#             "auto_answer_mode": auto_answer_mode
+#         }
+#
+#         # Send the request to the external API with basic authentication
+#         response = requests.get(url, params=params, auth=('admin', 'alphaadmin'))
+#
+#         # Check if the request was successful
+#         if response.status_code == 200:
+#             res = reboot(ip_zenitel)
+#             return Response({"message": "SIP configuration updated successfully."}, status=status.HTTP_200_OK)
+#         else:
+#             return Response(
+#                 {"error": "Failed to update configuration.", "status_code": response.status_code},
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#             )
 
 class UpdateSIPConfiguration(APIView):
     def post(self, request):
         # Extract parameters from the request body if needed
-        ip_zenitel = request.data.get("zenitel_ip", "10.30.250.212")
-        sip_nick = request.data.get("sip_nick", "8002")
-        sip_id = request.data.get("sip_id", "8002")
-        sip_domain = request.data.get("sip_domain", "10.30.250.241")
-        sip_auth_user = request.data.get("sip_auth_user", "8002")
-        sip_auth_pwd = request.data.get("sip_auth_pwd", "8002")
+        ip_zenitel = request.data.get("zenitel_ip")
+        sip_nick = request.data.get("sip_nick")
+        sip_id = request.data.get("sip_id")
+        sip_domain = request.data.get("sip_domain")
+        sip_domain2 = request.data.get("sip_domain2")
+        sip_auth_user = request.data.get("sip_auth_user")
+        sip_auth_pwd = request.data.get("sip_auth_pwd")
+        dak_number = request.data.get("dak_number")
         auto_answer_mode = request.data.get("auto_answer_mode", "on")
 
         # Define API endpoint and parameters
@@ -251,6 +305,7 @@ class UpdateSIPConfiguration(APIView):
             "sip_nick": sip_nick,
             "sip_id": sip_id,
             "sip_domain": sip_domain,
+            "sip_domain2": sip_domain2,
             "sipconfig": "SAVE",
             "sip_auth_user": sip_auth_user,
             "sip_auth_pwd": sip_auth_pwd,
@@ -262,7 +317,27 @@ class UpdateSIPConfiguration(APIView):
 
         # Check if the request was successful
         if response.status_code == 200:
-            return Response({"message": "SIP configuration updated successfully."}, status=status.HTTP_200_OK)
+            direct_access_keys_data = {
+                'dak_fun0': '0',
+                'dak_value0': dak_number,
+                'dak_vol0': '0',
+                # ... include other fields as needed from your data dictionary
+                'message': 'SAVE',
+            }
+            update_url = f"http://{ip_zenitel}/goform/zForm_speeddial_configuration"
+            response = requests.post(update_url, auth=('admin', 'alphaadmin'), data=direct_access_keys_data,
+                                     verify=False)
+            if response.status_code == 200:
+                # Optionally reboot the device
+                res = reboot(ip_zenitel)
+                print(res)
+                return Response({"message": "SIP configuration and Direct Access Keys updated successfully."},
+                                status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {"error": "Failed to update Direct Access Keys.", "status_code": response.status_code},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
         else:
             return Response(
                 {"error": "Failed to update configuration.", "status_code": response.status_code},
